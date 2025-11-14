@@ -1,99 +1,100 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
+import Display from "./components/Display";
+import Keypad from "./components/Keypad";
+import { calculate } from "./lib/calc";
 
 /**
  * PUBLIC_INTERFACE
- * App - Root component rendering a minimal calculator placeholder.
- * Displays a simple calculator layout (display + buttons) and performs
- * basic arithmetic in-memory to verify boot and interactivity.
+ * App - Root component rendering the calculator with modern component architecture.
+ * - Composes Display and Keypad
+ * - Centralizes logic via lib/calc (operate/calculate)
+ * - Provides keyboard support and accessible/responsive layout
  */
 export default function App() {
-  const [display, setDisplay] = useState("0");
-  const [acc, setAcc] = useState(null);
-  const [op, setOp] = useState(null);
-  const [clearNext, setClearNext] = useState(false);
+  const [state, setState] = useState({
+    display: "0",
+    acc: null,
+    op: null,
+    clearNext: false,
+  });
 
-  const handleNumber = (n) => {
-    setDisplay((prev) => {
-      const next = clearNext || prev === "0" ? String(n) : prev + String(n);
-      return next;
-    });
-    setClearNext(false);
-  };
+  const canEquals = useMemo(() => Boolean(state.op && state.acc !== null), [state.op, state.acc]);
 
-  const handleDot = () => {
-    setDisplay((prev) => {
-      if (clearNext) {
-        setClearNext(false);
-        return "0.";
+  // Handlers delegate to calculate()
+  const onButton = useCallback((name) => {
+    setState((s) => calculate(s, name));
+  }, []);
+
+  const onDigit = useCallback((d) => onButton(d), [onButton]);
+  const onDot = useCallback(() => onButton("."), [onButton]);
+  const onOperator = useCallback((op) => onButton(op), [onButton]);
+  const onEquals = useCallback(() => onButton("="), [onButton]);
+  const onClear = useCallback(() => onButton("AC"), [onButton]);
+  const onToggleSign = useCallback(() => onButton("±"), [onButton]);
+  const onPercent = useCallback(() => onButton("%"), [onButton]);
+
+  // Keyboard support
+  useEffect(() => {
+    const handler = (e) => {
+      const key = e.key;
+
+      // Map keyboard keys to calculator buttons
+      if (/^[0-9]$/.test(key)) {
+        e.preventDefault();
+        onDigit(key);
+        return;
       }
-      if (prev.includes(".")) return prev;
-      return prev + ".";
-    });
-  };
+      if (key === "." || key === ",") {
+        e.preventDefault();
+        onDot();
+        return;
+      }
+      if (key === "+" || key === "-") {
+        e.preventDefault();
+        onOperator(key);
+        return;
+      }
+      if (key === "*" || key === "x" || key === "X") {
+        e.preventDefault();
+        onOperator("×");
+        return;
+      }
+      if (key === "/" || key === "÷") {
+        e.preventDefault();
+        onOperator("÷");
+        return;
+      }
+      if (key === "Enter" || key === "=") {
+        e.preventDefault();
+        onEquals();
+        return;
+      }
+      if (key === "Backspace") {
+        e.preventDefault();
+        // Implement backspace: remove last char or reset to 0
+        setState((s) => {
+          if (s.clearNext) return s; // ignore when waiting for next number
+          const next =
+            s.display.length > 1 ? s.display.slice(0, -1) : "0";
+          return { ...s, display: next };
+        });
+        return;
+      }
+      if (key === "Escape") {
+        e.preventDefault();
+        onClear();
+        return;
+      }
+      if (key === "%") {
+        e.preventDefault();
+        onPercent();
+        return;
+      }
+    };
 
-  const applyOp = (a, b, operator) => {
-    const x = parseFloat(a);
-    const y = parseFloat(b);
-    if (Number.isNaN(x) || Number.isNaN(y)) return b;
-    switch (operator) {
-      case "+":
-        return String(x + y);
-      case "-":
-        return String(x - y);
-      case "×":
-        return String(x * y);
-      case "÷":
-        return y === 0 ? "∞" : String(x / y);
-      default:
-        return b;
-    }
-  };
-
-  const handleOperator = (operator) => {
-    if (op && acc !== null) {
-      const result = applyOp(acc, display, op);
-      setAcc(result === "∞" ? null : result);
-      setDisplay(result);
-    } else {
-      setAcc(display);
-    }
-    setOp(operator);
-    setClearNext(true);
-  };
-
-  const handleEquals = () => {
-    if (op && acc !== null) {
-      const result = applyOp(acc, display, op);
-      setDisplay(result);
-      setAcc(null);
-      setOp(null);
-      setClearNext(true);
-    }
-  };
-
-  const handleClear = () => {
-    setDisplay("0");
-    setAcc(null);
-    setOp(null);
-    setClearNext(false);
-  };
-
-  const Button = ({ children, onClick, className }) => (
-    <button
-      onClick={onClick}
-      className={className}
-      style={{
-        padding: "14px",
-        fontSize: "18px",
-        border: "1px solid #ddd",
-        background: "#fff",
-        cursor: "pointer",
-      }}
-      aria-label={typeof children === "string" ? children : undefined}
-    >
-      {children}
-    </button>
-  );
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onDigit, onDot, onOperator, onEquals, onClear, onPercent]);
 
   return (
     <div
@@ -105,89 +106,44 @@ export default function App() {
         justifyContent: "center",
         fontFamily:
           "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+        padding: "16px",
       }}
     >
       <div
+        role="application"
+        aria-label="Calculator"
         style={{
-          width: "320px",
+          width: "100%",
+          maxWidth: "360px",
           boxShadow: "0 10px 25px rgba(0,0,0,0.1)",
           borderRadius: "12px",
           overflow: "hidden",
           background: "#ffffff",
           border: "1px solid #eee",
+          display: "flex",
+          flexDirection: "column",
         }}
       >
-        <div
-          role="textbox"
-          aria-label="Calculator display"
-          style={{
-            padding: "20px",
-            fontSize: "32px",
-            textAlign: "right",
-            background: "#1f2937",
-            color: "#e5e7eb",
-          }}
-        >
-          {display}
-        </div>
-
+        <Display value={state.display} />
+        <Keypad
+          onDigit={onDigit}
+          onDot={onDot}
+          onOperator={onOperator}
+          onEquals={onEquals}
+          onClear={onClear}
+          onToggleSign={onToggleSign}
+          onPercent={onPercent}
+          canEquals={canEquals}
+        />
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(4, 1fr)",
+            padding: "10px",
+            textAlign: "center",
+            fontSize: "12px",
+            color: "#6b7280",
           }}
         >
-          <Button onClick={handleClear} className="btn-ac">
-            AC
-          </Button>
-          <Button onClick={() => handleOperator("÷")} className="btn-op">
-            ÷
-          </Button>
-          <Button onClick={() => handleOperator("×")} className="btn-op">
-            ×
-          </Button>
-          <Button onClick={() => handleOperator("-")} className="btn-op">
-            -
-          </Button>
-
-          {[7, 8, 9].map((n) => (
-            <Button key={n} onClick={() => handleNumber(n)}>
-              {n}
-            </Button>
-          ))}
-          <Button onClick={() => handleOperator("+")} className="btn-op">
-            +
-          </Button>
-
-          {[4, 5, 6].map((n) => (
-            <Button key={n} onClick={() => handleNumber(n)}>
-              {n}
-            </Button>
-          ))}
-          <Button onClick={handleEquals} className="btn-eq">
-            =
-          </Button>
-
-          {[1, 2, 3].map((n) => (
-            <Button key={n} onClick={() => handleNumber(n)}>
-              {n}
-            </Button>
-          ))}
-          <Button onClick={handleDot}>.</Button>
-
-          <Button onClick={() => handleNumber(0)} style={{ gridColumn: "span 2" }}>
-            0
-          </Button>
-          <Button onClick={() => setDisplay((d) => (d.startsWith("-") ? d.slice(1) : "-" + d))}>
-            ±
-          </Button>
-          <Button onClick={() => setDisplay((d) => String(parseFloat(d || "0") / 100))}>
-            %
-          </Button>
-        </div>
-
-        <div style={{ padding: "10px", textAlign: "center", fontSize: "12px", color: "#6b7280" }}>
-          React Calculator • Placeholder UI
+          React Calculator
         </div>
       </div>
     </div>
